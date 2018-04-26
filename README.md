@@ -9,15 +9,19 @@ usage: python pcap_generator_for_holepunch.py -t TYPE -o OUTPUT <other options>
 Usage of PCAP generator for hole punching
 
 optional arguments:
+
   -h, --help            show this help message and exit
+
   -t TYPE, --type TYPE  Specify the type: DP, SP_DP, DIP_SP_DP, SIP_DIP_SP_DP. 
-                        DP will punch a hole only on the dst_port (udp) -> 17 packets!
-                        SP_DP will punch holes on dst_port (UDP) and src_port (UDP) -> 17x17 packets
-                        SIP_DP will punch holes on dst_port (UDP) and src_ip -> 17x33 packets
-                        SIP_SP_DP will punch holes on dst_port (UDP), src_port (UDP) and dst_ip -> 17x17x33 packets
-                        SIP_DIP_DP will punch holes on dst_port (UDP), dst_ip and src_ip -> 17x33x33
-                        SIP_DIP_SP_DP will punch holes on dst_port (UDP), src_port (UDP), dst_ip and src_ip -> 17x17x33x33 packets
-  -o OUTPUT, --output OUTPUT
+
+	- DP will punch a hole only on the dst_port (udp) -> 17 packets!
+	- SP_DP will punch holes on dst_port (UDP) and src_port (UDP) -> 17x17 packets
+	- SIP_DP will punch holes on dst_port (UDP) and src_ip -> 17x33 packets
+	- SIP_SP_DP will punch holes on dst_port (UDP), src_port (UDP) and dst_ip -> 17x17x33 packets
+	- SIP_DIP_DP will punch holes on dst_port (UDP), dst_ip and src_ip -> 17x33x33
+	- SIP_DIP_SP_DP will punch holes on dst_port (UDP), src_port (UDP), dst_ip and src_ip -> 17x17x33x33 packets
+ 
+ -o OUTPUT, --output OUTPUT
                         Specify the output PCAP file's basename! Output will be [output].[PACKETSIZE]bytes.pcap extension is not needed!
   -a SRC_MAC, --src_mac SRC_MAC
                         Specify default source MAC address (for all packets), if not set default is 00:00:00:00:00:01
