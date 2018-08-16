@@ -8,38 +8,38 @@ import argparse
 import textwrap
 
 #Global header for pcap 2.4
-pcap_global_header =   ('D4 C3 B2 A1'   
-                        '02 00'         #File format major revision (i.e. pcap <2>.4)  
-                        '04 00'         #File format minor revision (i.e. pcap 2.<4>)   
-                        '00 00 00 00'     
-                        '00 00 00 00'     
-                        'FF FF 00 00'     
+pcap_global_header =   ('D4 C3 B2 A1'
+                        '02 00'         #File format major revision (i.e. pcap <2>.4)
+                        '04 00'         #File format minor revision (i.e. pcap 2.<4>)
+                        '00 00 00 00'
+                        '00 00 00 00'
+                        'FF FF 00 00'
                         '01 00 00 00')
 
 #pcap packet header that must preface every packet
-pcap_packet_header =   ('AA 77 9F 47'     
-                        '90 A2 04 00'     
-                        'XX XX XX XX'   #Frame Size (little endian) 
+pcap_packet_header =   ('AA 77 9F 47'
+                        '90 A2 04 00'
+                        'XX XX XX XX'   #Frame Size (little endian)
                         'YY YY YY YY')  #Frame Size (little endian)
 
-eth_header =   ('00 E0 4C 00 00 01'     #Dest Mac    
-                '00 04 0B 00 00 02'     #Src Mac  
+eth_header =   ('00 E0 4C 00 00 01'     #Dest Mac
+                '00 04 0B 00 00 02'     #Src Mac
                 '08 00')                #Protocol (0x0800 = IP)
 
-ip_header =    ('45'                    #IP version and header length (multiples of 4 bytes)   
-                '00'                      
+ip_header =    ('45'                    #IP version and header length (multiples of 4 bytes)
+                '00'
                 'XX XX'                 #Length - will be calculated and replaced later
-                '00 00'                   
-                '40 00 40'                
-                '11'                    #Protocol (0x11 = UDP)          
-                'YY YY'                 #Checksum - will be calculated and replaced later      
+                '00 00'
+                '40 00 TT'              ## TT is TTL
+                '11'                    #Protocol (0x11 = UDP)
+                'YY YY'                 #Checksum - will be calculated and replaced later
                 '0A 00 00 01'           #Source IP (Default: 10.0.0.1)
                 '0A 00 00 02')          #Dest IP (Default: 10.0.0.2)
 
-udp_header =   ('ZZ ZZ'                 # TODO                   
-                'XX XX'                 #Port - will be replaced later                   
-                'YY YY'                 #Length - will be calculated and replaced later        
-                '00 00') 
+udp_header =   ('ZZ ZZ'                 # TODO
+                'XX XX'                 #Port - will be replaced later
+                'YY YY'                 #Length - will be calculated and replaced later
+                '00 00')
 
 packet_sizes = (64,) #,                     #PCAP file will be generated for these
                 # 128,                    #packet sizes
@@ -49,27 +49,28 @@ packet_sizes = (64,) #,                     #PCAP file will be generated for the
                 # 1280,
                 # 1500)
 
+BASE_TTL=40
 
 
-                
+
 def getByteLength(str1):
     return len(''.join(str1.split())) / 2
 
 def writeByteStringToFile(bytestring, filename):
-    bytelist = bytestring.split()  
+    bytelist = bytestring.split()
     bytes = binascii.a2b_hex(''.join(bytelist))
     bitout = open(filename, 'ab')
     bitout.write(bytes)
-    
+
 def backspace(n):
     # print((b'\x08' * n).decode(), end='') # use \x08 char to go back
-    sys.stdout.write('\r' * n)                 # use '\r' to go back   
-    
+    sys.stdout.write('\r' * n)                 # use '\r' to go back
+
 def calculateRemainingPercentage(current,n):
 #     print("%d - %d" % (current,n))
     percent = str("all-byte packets: %d%%" % (int((current/float(n)) * 100)))
     sys.stdout.write(percent)
-    
+
     backspace(len(percent))                       # back for n chars
 #     return ((current/n) * 100)
 
@@ -78,7 +79,8 @@ def negate_bit(bit):
         return "0"
     return "1"
 
-def generateHolePunchDP(pcapfile, dp):
+def generateHolePunchDP(pcapfile, dp, ttl):
+    global BASE_TTL
     # write out header information to file
     nfo_file = str("%s.nfo" % pcapfile)
     writeoutLine(nfo_file, str("#src_mac,#dst_mac,#vlan,#src_ip,#dst_ip,#src_port,#dst_port"))
@@ -119,111 +121,126 @@ def generateHolePunchDP(pcapfile, dp):
     print "The following ports could punch a hole in megaflow cache"
     print other_ports
 
-    for i in range(0, n):
-        calculateRemainingPercentage(i, n)
+    created_packets=0
+    num_packets = int(ttl) * n
+    print "Number of packets to be generated: {}".format(num_packets)
+    # #ttl trick
+    for t in range(0, int(ttl)):
+        BASE_TTL = BASE_TTL + 1
 
-        #first we put one package into the file whose destination port number is $dp
-        # update ethernet header
-        eth_header = dst_mac + ' ' + src_mac + "0800"
-        # update ip header
-        ip_header = ('45'
-                     '00'
-                     'XX XX'
-                     '00 00'
-                     '40 00 40'
-                     '11'
-                     'YY YY')
-        ip_header += src_ip
-        ip_header += dst_ip
+        for i in range(0, n):
+            created_packets+=1
+            # print created_packets
 
-        udp = udp_header.replace('XX XX', "%04x" % other_ports[i])
-
-        udp = udp.replace('ZZ ZZ', "%04x" % sport)
+            calculateRemainingPercentage(created_packets, num_packets)
 
 
-        for pktSize in packet_sizes:
-            message = getMessage(pktSize)
+            #first we put one package into the file whose destination port number is $dp
+            # update ethernet header
+            eth_header = dst_mac + ' ' + src_mac + "0800"
+            # update ip header
+            ip_header = ('45'
+                         '00'
+                         'XX XX'
+                         '00 00'
+                         '40 00 TT'
+                         '11'
+                         'YY YY')
+            ip_header = ip_header.replace('TT', "%02x" % BASE_TTL)
+            # print ip_header
 
-            udp_len = getByteLength(message) + getByteLength(udp_header)
-            udp = udp.replace('YY YY', "%04x" % udp_len)
+            ip_header += src_ip
+            ip_header += dst_ip
 
-            ip_len = udp_len + getByteLength(ip_header)
-            ip = ip_header.replace('XX XX', "%04x" % ip_len)
-            checksum = ip_checksum(ip.replace('YY YY', '00 00'))
-            ip = ip.replace('YY YY', "%04x" % checksum)
+            udp = udp_header.replace('XX XX', "%04x" % other_ports[i])
 
-            pcap_len = ip_len + getByteLength(eth_header)
-            hex_str = "%08x" % pcap_len
-            reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
-            pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
-            pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
-
-            if i == 0:
-                bytestring = pcap_global_header + pcaph + eth_header + ip + udp + message
-
-            else:
-                bytestring = pcaph + eth_header + ip + udp + message
-
-            writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
-
-            # write out random values to file
-        # convert hex src MAC to string
-        src_mac_str = ""
-        for i, j in enumerate(src_mac):
-            if (i != 0) and (i % 2) == 0:
-                src_mac_str += ":"
-            src_mac_str += j
-            # convert hex dst MAC to string
-        dst_mac_str = ""
-        for i, j in enumerate(dst_mac):
-            if (i != 0) and (i % 2) == 0:
-                dst_mac_str += ":"
-            dst_mac_str += j
-
-            # convert hex dst IP to string
-        dst_ip_str = ""
-        start = 0
-        stop = 2
-        for i, j in enumerate(dst_ip):
-            b = i + 1
-            if b % 2 == 0:
-                dst_ip_str += str(int(dst_ip[start:stop], 16))
-                start += 2
-                stop += 2
-                if (b != len(dst_ip)):
-                    dst_ip_str += "."
-
-        # convert hex src IP to string
-        src_ip_str = ""
-        start = 0
-        stop = 2
-        for i, j in enumerate(src_ip):
-            b = i + 1
-            if b % 2 == 0:
-                src_ip_str += str(int(src_ip[start:stop], 16))
-                start += 2
-                stop += 2
-                if (b != len(src_ip)):
-                    src_ip_str += "."
-
-                    # convert ports to sting
-        src_port_str = str(sport)
-        dst_port_str = str(dport)
-
-        ##src_mac,#dst_mac,#src_ip,#dst_ip,#src_port,#dst_port
-        line = src_mac_str + "," + dst_mac_str + "," + \
-               src_ip_str + "," + dst_ip_str + "," + \
-               src_port_str + "," + dst_port_str
-        writeoutLine(nfo_file, line)
+            udp = udp.replace('ZZ ZZ', "%04x" % sport)
 
 
-def generateHolePunchSIPDP(pcapfile, sip, dp):
+            for pktSize in packet_sizes:
+                message = getMessage(pktSize)
+
+                udp_len = getByteLength(message) + getByteLength(udp_header)
+                udp = udp.replace('YY YY', "%04x" % udp_len)
+
+                ip_len = udp_len + getByteLength(ip_header)
+                ip = ip_header.replace('XX XX', "%04x" % ip_len)
+                checksum = ip_checksum(ip.replace('YY YY', '00 00'))
+                ip = ip.replace('YY YY', "%04x" % checksum)
+
+                pcap_len = ip_len + getByteLength(eth_header)
+                hex_str = "%08x" % pcap_len
+                reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
+                pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
+                pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
+
+                if i == 0 and t == 0:
+                    bytestring = pcap_global_header + pcaph + eth_header + ip + udp + message
+
+                else:
+                    bytestring = pcaph + eth_header + ip + udp + message
+
+                writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
+
+                # write out random values to file
+            # convert hex src MAC to string
+            src_mac_str = ""
+            for i, j in enumerate(src_mac):
+                if (i != 0) and (i % 2) == 0:
+                    src_mac_str += ":"
+                src_mac_str += j
+                # convert hex dst MAC to string
+            dst_mac_str = ""
+            for i, j in enumerate(dst_mac):
+                if (i != 0) and (i % 2) == 0:
+                    dst_mac_str += ":"
+                dst_mac_str += j
+
+                # convert hex dst IP to string
+            dst_ip_str = ""
+            start = 0
+            stop = 2
+            for i, j in enumerate(dst_ip):
+                b = i + 1
+                if b % 2 == 0:
+                    dst_ip_str += str(int(dst_ip[start:stop], 16))
+                    start += 2
+                    stop += 2
+                    if (b != len(dst_ip)):
+                        dst_ip_str += "."
+
+            # convert hex src IP to string
+            src_ip_str = ""
+            start = 0
+            stop = 2
+            for i, j in enumerate(src_ip):
+                b = i + 1
+                if b % 2 == 0:
+                    src_ip_str += str(int(src_ip[start:stop], 16))
+                    start += 2
+                    stop += 2
+                    if (b != len(src_ip)):
+                        src_ip_str += "."
+
+                        # convert ports to sting
+            src_port_str = str(sport)
+            dst_port_str = str(dport)
+
+            ##src_mac,#dst_mac,#src_ip,#dst_ip,#src_port,#dst_port
+            line = src_mac_str + "," + dst_mac_str + "," + \
+                   src_ip_str + "," + dst_ip_str + "," + \
+                   src_port_str + "," + dst_port_str
+            writeoutLine(nfo_file, line)
+
+
+def generateHolePunchSIPDP(pcapfile, sip, dp, ttl):
     '''
     :param pcapfile: filename
     :param sip: source ip
     :param dp: destination port
     :return:
     '''
+    global BASE_TTL
 
     src_ip = parseIP(sip)
     src_ip_bin = '{0:032b}'.format(int(src_ip, 16))  # convert hex to int and then to bin string
@@ -275,59 +292,68 @@ def generateHolePunchSIPDP(pcapfile, sip, dp):
     print "The following source IPs could punch a hole in megaflow cache"
     print other_src_ips
 
-    # n is the number of different SIPs
-    for i in range(0, n):
+    created_packets=0
+    num_packets = int(ttl) * n
+    print "Number of packets to be generated: {}".format(num_packets)
+    # #ttl trick
+    for t in range(0, int(ttl)):
+        BASE_TTL = BASE_TTL + 1
 
-        print "{}th iteration".format(i)
-        print "SRC IP: {}".format(other_src_ips[i])
+        for i in range(0, n):
+            created_packets+=1
+            # print created_packets
 
-        calculateRemainingPercentage(i, n)
-        # first we put one package into the file whose destination port number is $dp
-        # update ethernet header
-        eth_header = dst_mac + ' ' + src_mac + "0800"
-        # update ip header
-        ip_header = ('45'
-                     '00'
-                     'XX XX'
-                     '00 00'
-                     '40 00 40'
-                     '11'
-                     'YY YY')
-        ip_header += other_src_ips[i]
-        ip_header += dst_ip
+            calculateRemainingPercentage(created_packets, num_packets)
 
-        for pktSize in packet_sizes:
-            message = getMessage(pktSize)
-            # src port
-            udp = udp_header.replace('ZZ ZZ', "%04x" % sport)
-            # dst port
-            for jj in range(0, dport_len + 1):
-                # update ports
-                new_udp = udp.replace('XX XX', "%04x" % other_dst_ports[jj])
+            # first we put one package into the file whose destination port number is $dp
+            # update ethernet header
+            eth_header = dst_mac + ' ' + src_mac + "0800"
+            # update ip header
+            ip_header = ('45'
+                         '00'
+                         'XX XX'
+                         '00 00'
+                         '40 00 TT'
+                         '11'
+                         'YY YY')
 
-                udp_len = getByteLength(message) + getByteLength(udp_header)
-                new_udp = new_udp.replace('YY YY', "%04x" % udp_len)
+            ip_header = ip_header.replace('TT', "%02x" % BASE_TTL)
 
-                ip_len = udp_len + getByteLength(ip_header)
-                ip = ip_header.replace('XX XX', "%04x" % ip_len)
-                checksum = ip_checksum(ip.replace('YY YY', '00 00'))
-                ip = ip.replace('YY YY', "%04x" % checksum)
+            ip_header += other_src_ips[i]
+            ip_header += dst_ip
 
-                pcap_len = ip_len + getByteLength(eth_header)
-                hex_str = "%08x" % pcap_len
-                reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
-                pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
-                pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
+            for pktSize in packet_sizes:
+                message = getMessage(pktSize)
+                # src port
+                udp = udp_header.replace('ZZ ZZ', "%04x" % sport)
+                # dst port
+                for jj in range(0, dport_len + 1):
+                    # update ports
+                    new_udp = udp.replace('XX XX', "%04x" % other_dst_ports[jj])
 
-                if i == 0 and jj == 0:
-                    bytestring = pcap_global_header + pcaph + eth_header + ip + new_udp + message
-                else:
-                    bytestring = pcaph + eth_header + ip + new_udp + message
+                    udp_len = getByteLength(message) + getByteLength(udp_header)
+                    new_udp = new_udp.replace('YY YY', "%04x" % udp_len)
 
-                writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
+                    ip_len = udp_len + getByteLength(ip_header)
+                    ip = ip_header.replace('XX XX', "%04x" % ip_len)
+                    checksum = ip_checksum(ip.replace('YY YY', '00 00'))
+                    ip = ip.replace('YY YY', "%04x" % checksum)
+
+                    pcap_len = ip_len + getByteLength(eth_header)
+                    hex_str = "%08x" % pcap_len
+                    reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
+                    pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
+                    pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
+
+                    if i == 0 and jj == 0 and t == 0:
+                        bytestring = pcap_global_header + pcaph + eth_header + ip + new_udp + message
+                    else:
+                        bytestring = pcaph + eth_header + ip + new_udp + message
+
+                    writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
 
 
-def generateHolePunchSPDP(pcapfile, sp, dp):
+def generateHolePunchSPDP(pcapfile, sp, dp, ttl):
     '''
     :param pcapfile: filename
     :param n: number of packets
@@ -335,8 +361,7 @@ def generateHolePunchSPDP(pcapfile, sp, dp):
     :param sp: source port
     :return:
     '''
-
-
+    global BASE_TTL
 
     src_ip = parseIP(default_sip)   #10.0.0.1
     dst_ip = parseIP(default_dip)   #10.0.0.2
@@ -381,59 +406,67 @@ def generateHolePunchSPDP(pcapfile, sp, dp):
         print "Too many packets! Destination port number is only 16 bits wide!"
         return
 
-    for i in range(0, n):
-        udp = udp_header.replace('ZZ ZZ', "%04x" % other_src_ports[i])
-        print "{}th iteration".format(i)
-        print "SRC PORT: {}".format(other_src_ports[i])
+    created_packets=0
+    num_packets = n*n*int(ttl)
+    print "Number of packets to be generated: {}".format(num_packets)
+    # #ttl trick
+    for t in range(0, int(ttl)):
+        BASE_TTL = BASE_TTL + 1
+
+        for i in range(0, n):
+            created_packets+=1
+            # print created_packets
+
+            calculateRemainingPercentage(created_packets, num_packets)
+
+            # first we put one package into the file whose destination port number is $dp
+            # update ethernet header
+            eth_header = dst_mac + ' ' + src_mac + "0800"
+            # update ip header
+            ip_header = ('45'
+                         '00'
+                         'XX XX'
+                         '00 00'
+                         '40 00 TT'
+                         '11'
+                         'YY YY')
+
+            ip_header = ip_header.replace('TT', "%02x" % BASE_TTL)
+            ip_header += src_ip
+            ip_header += dst_ip
+
+            udp = udp_header.replace('ZZ ZZ', "%04x" % other_src_ports[i])
+
+            for pktSize in packet_sizes:
+                message = getMessage(pktSize)
+
+                for jj in range(0,(sport_len+1)):
+                    # update ports
+                    new_udp = udp.replace('XX XX', "%04x" % other_dst_ports[jj])
+
+                    udp_len = getByteLength(message) + getByteLength(udp_header)
+                    new_udp = new_udp.replace('YY YY', "%04x" % udp_len)
+
+                    ip_len = udp_len + getByteLength(ip_header)
+                    ip = ip_header.replace('XX XX', "%04x" % ip_len)
+                    checksum = ip_checksum(ip.replace('YY YY', '00 00'))
+                    ip = ip.replace('YY YY', "%04x" % checksum)
+
+                    pcap_len = ip_len + getByteLength(eth_header)
+                    hex_str = "%08x" % pcap_len
+                    reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
+                    pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
+                    pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
+
+                    if t == 0 and jj == 0 and i == 0:
+                        bytestring = pcap_global_header + pcaph + eth_header + ip + new_udp + message
+                    else:
+                        bytestring = pcaph + eth_header + ip + new_udp + message
+
+                    writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
 
 
-        calculateRemainingPercentage(i, n)
-        #first we put one package into the file whose destination port number is $dp
-        # update ethernet header
-        eth_header = dst_mac + ' ' + src_mac + "0800"
-        # update ip header
-        ip_header = ('45'
-                     '00'
-                     'XX XX'
-                     '00 00'
-                     '40 00 40'
-                     '11'
-                     'YY YY')
-        ip_header += src_ip
-        ip_header += dst_ip
-
-
-
-        for pktSize in packet_sizes:
-            message = getMessage(pktSize)
-
-            for j in range(0,(sport_len+1)):
-                # update ports
-                new_udp = udp.replace('XX XX', "%04x" % other_dst_ports[j])
-
-                udp_len = getByteLength(message) + getByteLength(udp_header)
-                new_udp = new_udp.replace('YY YY', "%04x" % udp_len)
-
-                ip_len = udp_len + getByteLength(ip_header)
-                ip = ip_header.replace('XX XX', "%04x" % ip_len)
-                checksum = ip_checksum(ip.replace('YY YY', '00 00'))
-                ip = ip.replace('YY YY', "%04x" % checksum)
-
-                pcap_len = ip_len + getByteLength(eth_header)
-                hex_str = "%08x" % pcap_len
-                reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
-                pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
-                pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
-
-                if j == 0 and i == 0:
-                    bytestring = pcap_global_header + pcaph + eth_header + ip + new_udp + message
-                else:
-                    bytestring = pcaph + eth_header + ip + new_udp + message
-
-                writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
-
-
-def generateHolePunchSIPSPDP(pcapfile, sip, sp, dp):
+def generateHolePunchSIPSPDP(pcapfile, sip, sp, dp, ttl):
     '''
     :param pcapfile: filename
     :param n: number of packets
@@ -442,8 +475,7 @@ def generateHolePunchSIPSPDP(pcapfile, sip, sp, dp):
     :param sip: source IP
     :return:
     '''
-
-
+    global BASE_TTL
 
     src_ip = parseIP(sip)
     src_ip_bin='{0:032b}'.format(int(src_ip,16)) #convert hex to int and then to bin string
@@ -507,62 +539,69 @@ def generateHolePunchSIPSPDP(pcapfile, sip, sp, dp):
     print "The following source IPs could punch a hole in megaflow cache"
     print other_src_ips
 
-    for i in range(0, n):
+    created_packets=0
+    num_packets = n*sport_len*dport_len*int(ttl)
+    print "Number of packets to be generated: {}".format(num_packets)
+    # #ttl trick
+    for t in range(0, int(ttl)):
+        BASE_TTL = BASE_TTL + 1
+
+        for i in range(0, n):
+            created_packets+=1
+            # print created_packets
+
+            calculateRemainingPercentage(created_packets, num_packets)
+
+            # first we put one package into the file whose destination port number is $dp
+            # update ethernet header
+            eth_header = dst_mac + ' ' + src_mac + "0800"
+            # update ip header
+            ip_header = ('45'
+                         '00'
+                         'XX XX'
+                         '00 00'
+                         '40 00 TT'
+                         '11'
+                         'YY YY')
+
+            ip_header = ip_header.replace('TT', "%02x" % BASE_TTL)
+            ip_header += other_src_ips[i]
+            ip_header += dst_ip
 
 
-        print "{}th iteration".format(i)
-        print "SRC IP: {}".format(other_src_ips[i])
+            for pktSize in packet_sizes:
+                message = getMessage(pktSize)
+                #src port
+                for j in range(0,sport_len+1):
+                    udp = udp_header.replace('ZZ ZZ', "%04x" % other_src_ports[j])
+                    #dst port
+                    for jj in range(0,dport_len+1):
+                        # update ports
+                        new_udp = udp.replace('XX XX', "%04x" % other_dst_ports[jj])
+
+                        udp_len = getByteLength(message) + getByteLength(udp_header)
+                        new_udp = new_udp.replace('YY YY', "%04x" % udp_len)
+
+                        ip_len = udp_len + getByteLength(ip_header)
+                        ip = ip_header.replace('XX XX', "%04x" % ip_len)
+                        checksum = ip_checksum(ip.replace('YY YY', '00 00'))
+                        ip = ip.replace('YY YY', "%04x" % checksum)
+
+                        pcap_len = ip_len + getByteLength(eth_header)
+                        hex_str = "%08x" % pcap_len
+                        reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
+                        pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
+                        pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
+
+                        if j == 0 and i == 0 and jj == 0 and t == 0:
+                            bytestring = pcap_global_header + pcaph + eth_header + ip + new_udp + message
+                        else:
+                            bytestring = pcaph + eth_header + ip + new_udp + message
+
+                        writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
 
 
-        calculateRemainingPercentage(i, n)
-        #first we put one package into the file whose destination port number is $dp
-        # update ethernet header
-        eth_header = dst_mac + ' ' + src_mac + "0800"
-        # update ip header
-        ip_header = ('45'
-                     '00'
-                     'XX XX'
-                     '00 00'
-                     '40 00 40'
-                     '11'
-                     'YY YY')
-        ip_header += other_src_ips[i]
-        ip_header += dst_ip
-
-
-        for pktSize in packet_sizes:
-            message = getMessage(pktSize)
-            #src port
-            for j in range(0,sport_len+1):
-                udp = udp_header.replace('ZZ ZZ', "%04x" % other_src_ports[j])
-                #dst port
-                for jj in range(0,dport_len+1):
-                    # update ports
-                    new_udp = udp.replace('XX XX', "%04x" % other_dst_ports[jj])
-
-                    udp_len = getByteLength(message) + getByteLength(udp_header)
-                    new_udp = new_udp.replace('YY YY', "%04x" % udp_len)
-
-                    ip_len = udp_len + getByteLength(ip_header)
-                    ip = ip_header.replace('XX XX', "%04x" % ip_len)
-                    checksum = ip_checksum(ip.replace('YY YY', '00 00'))
-                    ip = ip.replace('YY YY', "%04x" % checksum)
-
-                    pcap_len = ip_len + getByteLength(eth_header)
-                    hex_str = "%08x" % pcap_len
-                    reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
-                    pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
-                    pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
-
-                    if j == 0 and i == 0 and jj == 0:
-                        bytestring = pcap_global_header + pcaph + eth_header + ip + new_udp + message
-                    else:
-                        bytestring = pcaph + eth_header + ip + new_udp + message
-
-                    writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
-
-
-def generateHolePunchSIPDIPDP(pcapfile, sip, dip, dp):
+def generateHolePunchSIPDIPDP(pcapfile, sip, dip, dp, ttl):
     '''
     :param pcapfile: filename
     :param dp: destination port
@@ -570,6 +609,7 @@ def generateHolePunchSIPDIPDP(pcapfile, sip, dip, dp):
     :param dip: destination IP
     :return:
     '''
+    global BASE_TTL
 
     src_mac = parseMAC(default_smac)
     dst_mac = parseMAC(default_dmac)
@@ -633,65 +673,72 @@ def generateHolePunchSIPDIPDP(pcapfile, sip, dip, dp):
     print "The following destination IPs could punch a hole in megaflow cache"
     print other_dst_ips
 
-    for i in range(0, n):
+    created_packets=0
+    num_packets = n*(sip_len+1)*(dport_len+1)*int(ttl)
+    print "Number of packets to be generated: {}".format(num_packets)
+    # #ttl trick
+    for t in range(0, int(ttl)):
+        BASE_TTL = BASE_TTL + 1
+
+        for i in range(0, n):
+            created_packets+=1
+
+            calculateRemainingPercentage(created_packets, num_packets)
+
+            # first we put one package into the file whose destination port number is $dp
+            # update ethernet header
+            eth_header = dst_mac + ' ' + src_mac + "0800"
+            # update ip header
+            ip_header = ('45'  # IP version and header length (multiples of 4 bytes)
+                         '00'
+                         'XX XX'  # Length - will be calculated and replaced later
+                         '00 00'
+                         '40 00 TT'
+                         '11'  # Protocol (0x11 = UDP)
+                         'YY YY'  # Checksum - will be calculated and replaced later
+                         'KKKKKKKK'  # Source IP (Default: 10.0.0.1)
+                         'LLLLLLLL') # Destination IP
+
+            ip_header = ip_header.replace('TT', "%02x" % BASE_TTL)
+
+            ip_header = ip_header.replace('LLLLLLLL', other_dst_ips[i])
+
+            for pktSize in packet_sizes:
+                message = getMessage(pktSize)
+
+                #src_ip
+                for j in range(0, sip_len+1):
+                    new_ip_header=ip_header.replace('KKKKKKKK', other_src_ips[j])
+
+                    udp = udp_header.replace('ZZ ZZ', "%04x" % sport)
+                    #dst port
+                    for jjj in range(0, dport_len+1):
+                        # update ports
+                        new_udp = udp.replace('XX XX', "%04x" % other_dst_ports[jjj])
+
+                        udp_len = getByteLength(message) + getByteLength(udp_header)
+                        new_udp = new_udp.replace('YY YY', "%04x" % udp_len)
+
+                        ip_len = udp_len + getByteLength(new_ip_header)
+                        ip = new_ip_header.replace('XX XX', "%04x" % ip_len)
+                        checksum = ip_checksum(ip.replace('YY YY', '00 00'))
+                        ip = ip.replace('YY YY', "%04x" % checksum)
+
+                        pcap_len = ip_len + getByteLength(eth_header)
+                        hex_str = "%08x" % pcap_len
+                        reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
+                        pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
+                        pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
+
+                        if j == 0 and i == 0 and jjj==0 and t == 0:
+                            bytestring = pcap_global_header + pcaph + eth_header + ip + new_udp + message
+                        else:
+                            bytestring = pcaph + eth_header + ip + new_udp + message
+
+                        writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
 
 
-        print "{}th iteration".format(i)
-        print "DST IP: {}".format(other_src_ips[i])
-
-
-        calculateRemainingPercentage(i, n)
-        #first we put one package into the file whose destination port number is $dp
-        # update ethernet header
-        eth_header = dst_mac + ' ' + src_mac + "0800"
-        # update ip header
-        ip_header = ('45'  # IP version and header length (multiples of 4 bytes)
-                     '00'
-                     'XX XX'  # Length - will be calculated and replaced later
-                     '00 00'
-                     '40 00 40'
-                     '11'  # Protocol (0x11 = UDP)
-                     'YY YY'  # Checksum - will be calculated and replaced later
-                     'KKKKKKKK'  # Source IP (Default: 10.0.0.1)
-                     'LLLLLLLL') # Destination IP
-        ip_header = ip_header.replace('LLLLLLLL', other_dst_ips[i])
-
-        for pktSize in packet_sizes:
-            message = getMessage(pktSize)
-
-            #src_ip
-            for j in range(0, sip_len+1):
-                new_ip_header=ip_header.replace('KKKKKKKK', other_src_ips[j])
-
-                udp = udp_header.replace('ZZ ZZ', "%04x" % sport)
-                #dst port
-                for jjj in range(0, dport_len+1):
-                    # update ports
-                    new_udp = udp.replace('XX XX', "%04x" % other_dst_ports[jjj])
-
-                    udp_len = getByteLength(message) + getByteLength(udp_header)
-                    new_udp = new_udp.replace('YY YY', "%04x" % udp_len)
-
-                    ip_len = udp_len + getByteLength(new_ip_header)
-                    ip = new_ip_header.replace('XX XX', "%04x" % ip_len)
-                    checksum = ip_checksum(ip.replace('YY YY', '00 00'))
-                    ip = ip.replace('YY YY', "%04x" % checksum)
-
-                    pcap_len = ip_len + getByteLength(eth_header)
-                    hex_str = "%08x" % pcap_len
-                    reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
-                    pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
-                    pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
-
-                    if j == 0 and i == 0 and jjj==0:
-                        bytestring = pcap_global_header + pcaph + eth_header + ip + new_udp + message
-                    else:
-                        bytestring = pcaph + eth_header + ip + new_udp + message
-
-                    writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
-
-
-def generateHolePunchDIPSIPSPDP(pcapfile, sip, dip, sp, dp):
+def generateHolePunchDIPSIPSPDP(pcapfile, sip, dip, sp, dp, ttl):
     '''
     :param pcapfile: filename
     :param n: number of packets
@@ -701,6 +748,7 @@ def generateHolePunchDIPSIPSPDP(pcapfile, sip, dip, sp, dp):
     :param dip: destination IP
     :return:
     '''
+    global BASE_TTL
 
 
 
@@ -780,64 +828,71 @@ def generateHolePunchDIPSIPSPDP(pcapfile, sip, dip, sp, dp):
     print "The following destination IPs could punch a hole in megaflow cache"
     print other_dst_ips
 
-    for i in range(0, n):
+    created_packets=0
+    num_packets = n*(sip_len+1)*(dport_len+1)*(sport_len+1)*int(ttl)
+    print "Number of packets to be generated: {}".format(num_packets)
+    # #ttl trick
+    for t in range(0, int(ttl)):
+        BASE_TTL = BASE_TTL + 1
 
+        for i in range(0, n):
+            created_packets+=1
 
-        print "{}th iteration".format(i)
-        print "DST IP: {}".format(other_src_ips[i])
+            calculateRemainingPercentage(created_packets, num_packets)
 
+            # first we put one package into the file whose destination port number is $dp
+            # update ethernet header
+            eth_header = dst_mac + ' ' + src_mac + "0800"
+            # update ip header
+            ip_header = ('45'  # IP version and header length (multiples of 4 bytes)
+                         '00'
+                         'XX XX'  # Length - will be calculated and replaced later
+                         '00 00'
+                         '40 00 TT'
+                         '11'  # Protocol (0x11 = UDP)
+                         'YY YY'  # Checksum - will be calculated and replaced later
+                         'KKKKKKKK'  # Source IP (Default: 10.0.0.1)
+                         'LLLLLLLL') # Destination IP
 
-        calculateRemainingPercentage(i, n)
-        #first we put one package into the file whose destination port number is $dp
-        # update ethernet header
-        eth_header = dst_mac + ' ' + src_mac + "0800"
-        # update ip header
-        ip_header = ('45'  # IP version and header length (multiples of 4 bytes)
-                     '00'
-                     'XX XX'  # Length - will be calculated and replaced later
-                     '00 00'
-                     '40 00 40'
-                     '11'  # Protocol (0x11 = UDP)
-                     'YY YY'  # Checksum - will be calculated and replaced later
-                     'KKKKKKKK'  # Source IP (Default: 10.0.0.1)
-                     'LLLLLLLL') # Destination IP
-        ip_header = ip_header.replace('LLLLLLLL', other_dst_ips[i])
+            ip_header = ip_header.replace('TT', "%02x" % BASE_TTL)
 
-        for pktSize in packet_sizes:
-            message = getMessage(pktSize)
+            ip_header = ip_header.replace('LLLLLLLL', other_dst_ips[i])
 
-            #src_ip
-            for j in range(0,sip_len+1):
-                new_ip_header=ip_header.replace('KKKKKKKK', other_src_ips[j])
+            for pktSize in packet_sizes:
+                message = getMessage(pktSize)
 
-                #src port
-                for jj in range(0,sport_len+1):
-                    udp = udp_header.replace('ZZ ZZ', "%04x" % other_src_ports[jj])
-                    #dst port
-                    for jjj in range(0,dport_len+1):
-                        # update ports
-                        new_udp = udp.replace('XX XX', "%04x" % other_dst_ports[jjj])
+                #src_ip
+                for j in range(0,sip_len+1):
+                    new_ip_header=ip_header.replace('KKKKKKKK', other_src_ips[j])
 
-                        udp_len = getByteLength(message) + getByteLength(udp_header)
-                        new_udp = new_udp.replace('YY YY', "%04x" % udp_len)
+                    #src port
+                    for jj in range(0,sport_len+1):
+                        udp = udp_header.replace('ZZ ZZ', "%04x" % other_src_ports[jj])
+                        #dst port
+                        for jjj in range(0,dport_len+1):
+                            # update ports
+                            new_udp = udp.replace('XX XX', "%04x" % other_dst_ports[jjj])
 
-                        ip_len = udp_len + getByteLength(new_ip_header)
-                        ip = new_ip_header.replace('XX XX', "%04x" % ip_len)
-                        checksum = ip_checksum(ip.replace('YY YY', '00 00'))
-                        ip = ip.replace('YY YY', "%04x" % checksum)
+                            udp_len = getByteLength(message) + getByteLength(udp_header)
+                            new_udp = new_udp.replace('YY YY', "%04x" % udp_len)
 
-                        pcap_len = ip_len + getByteLength(eth_header)
-                        hex_str = "%08x" % pcap_len
-                        reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
-                        pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
-                        pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
+                            ip_len = udp_len + getByteLength(new_ip_header)
+                            ip = new_ip_header.replace('XX XX', "%04x" % ip_len)
+                            checksum = ip_checksum(ip.replace('YY YY', '00 00'))
+                            ip = ip.replace('YY YY', "%04x" % checksum)
 
-                        if j == 0 and i == 0 and jj == 0 and jjj==0:
-                            bytestring = pcap_global_header + pcaph + eth_header + ip + new_udp + message
-                        else:
-                            bytestring = pcaph + eth_header + ip + new_udp + message
+                            pcap_len = ip_len + getByteLength(eth_header)
+                            hex_str = "%08x" % pcap_len
+                            reverse_hex_str = hex_str[6:] + hex_str[4:6] + hex_str[2:4] + hex_str[:2]
+                            pcaph = pcap_packet_header.replace('XX XX XX XX', reverse_hex_str)
+                            pcaph = pcaph.replace('YY YY YY YY', reverse_hex_str)
 
-                        writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
+                            if j == 0 and i == 0 and jj == 0 and jjj==0 and t == 0:
+                                bytestring = pcap_global_header + pcaph + eth_header + ip + new_udp + message
+                            else:
+                                bytestring = pcaph + eth_header + ip + new_udp + message
+
+                            writeByteStringToFile(bytestring, pcapfile + str(".%dbytes.pcap" % pktSize))
 
 
 def splitN(str1,n):
@@ -846,7 +901,7 @@ def splitN(str1,n):
 #Calculates and returns the IP checksum based on the given IP Header
 def ip_checksum(iph):
 
-    #split into bytes    
+    #split into bytes
     words = splitN(''.join(iph.split()),4)
 
     csum = 0
@@ -865,7 +920,7 @@ def getMac(mac):
   mac = str("%06x" % (mac))
   #print(mac)
   return mac
-  
+
 def getRandomMAC():
     return "00" + str("%0.10X" % random.randint(1,0xffffffffff))
 
@@ -880,15 +935,15 @@ def getVLANid(spec_range):
 def getNextIP(nextIP, ul_dl):
     if (nextIP % 256) == 0:
         nextIP += 1
-    if ul_dl:    
+    if ul_dl:
         s_pre = "0A"
     else:
         s_pre = "AA"
 
     s = s_pre + str("%0.6X" % nextIP)
 
-    return s 
-    
+    return s
+
 def getRandomPort():
     port = random.randint(1,65535)
     if(port == 4305):
@@ -919,12 +974,12 @@ def writeoutLine(filename, line):
     file = open(filename, 'a')
     file.write(line + "\n")
     file.close()
-    
+
 def getMessage(packetsize):
     message = ''
     for i in range(0,int(packetsize)-46): # 46 = eth + ip + udp header
         message += "%0.2X " % random.randint(0,255)
-    
+
     return message
 
 """------------------------------------------"""
@@ -938,7 +993,7 @@ parser = argparse.ArgumentParser(description="Usage of PCAP generator for hole p
                                  formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument('-t','--type',nargs=1,
                     help=textwrap.dedent('''\
-                         Specify the type: DP, SP_DP, DIP_SP_DP, SIP_DIP_SP_DP. 
+                         Specify the type: DP, SP_DP, DIP_SP_DP, SIP_DIP_SP_DP.
                          \033[1mDP\033[0m will punch a hole only on the dst_port (udp) -> 17 packets!
                          \033[1mSP_DP\033[0m will punch holes on dst_port (UDP) and src_port (UDP) -> 17x17 packets
                          \033[1mSIP_DP\033[0m will punch holes on dst_port (UDP) and src_ip -> 17x33 packets
@@ -987,6 +1042,14 @@ parser.add_argument('-f', '--dst_port', nargs=1,
                          "the default hole is 80",
                     required=False,
                     default=["80"])
+parser.add_argument('-g', '--ttl', nargs=1,
+                    help="Specify how many different TTLs you want to have in the packets"
+                         "(multiplying the base number of packets by this number, e.g., in case"
+                         "of number 2 and type DP, the number of packet will be 17*2). If not set "
+                         "the default number is 1",
+                    required=False,
+                    default=["1"])
+
 
 args = parser.parse_args()
 
@@ -995,7 +1058,7 @@ types = ['DP', 'SP_DP', 'SIP_DP', 'SIP_DIP_DP', 'SIP_SP_DP','SIP_DIP_SP_DP']
 
 if type not in types:
     print "Type has not set properly. Accepted fields: DP, SP_DP, SIP_DP, SIP_DIP_DP, SIP_SP_DP, SIP_DIP_SP_DP"
-    exit -1
+    exit(-1)
 
 
 output = args.output[0]
@@ -1005,6 +1068,7 @@ default_sip = args.src_ip[0]
 default_dip = args.dst_ip[0]
 default_sp = int(args.src_port[0])
 default_dp = int(args.dst_port[0])
+default_ttl = int(args.ttl[0])
 
 
 
@@ -1013,19 +1077,18 @@ for i in packet_sizes:
 
 
 if type == "DP":
-    generateHolePunchDP(output, default_dp)
+    generateHolePunchDP(output, default_dp, default_ttl)
 elif type == "SP_DP":
-    generateHolePunchSPDP(output, default_sp, default_dp)
+    generateHolePunchSPDP(output, default_sp, default_dp, default_ttl)
 elif type == "SIP_DP":
-    generateHolePunchSIPDP(output, default_sip, default_dp)
+    generateHolePunchSIPDP(output, default_sip, default_dp, default_ttl)
 elif type == "SIP_SP_DP":
-    generateHolePunchSIPSPDP(output, default_sip, default_sp, default_dp)
+    generateHolePunchSIPSPDP(output, default_sip, default_sp, default_dp, default_ttl)
 elif type == "SIP_DIP_DP":
-    generateHolePunchSIPDIPDP(output, default_sip, default_dip, default_dp)
+    generateHolePunchSIPDIPDP(output, default_sip, default_dip, default_dp, default_ttl)
 elif type == "SIP_DIP_SP_DP":
-    generateHolePunchDIPSIPSPDP(output, default_sip, default_dip, default_sp, default_dp)
+    generateHolePunchDIPSIPSPDP(output, default_sip, default_dip, default_sp, default_dp, default_ttl)
 
 
 # generateHolePunchSIPSPDP(fileName, nPkts, 80, 12345, "0A000001")  #initial sip = 10.0.0.1
 # generateHolePunchDIPSIPSPDP(fileName, nPkts, 80, 12345, "0A000001", "0A000002")  #initial sip = 10.0.0.1, intial dip = 10.0.0.2
-
