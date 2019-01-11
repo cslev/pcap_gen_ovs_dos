@@ -222,9 +222,9 @@ def generateHolePunchDP(pcapfile, dp, ttl):
                     if (b != len(src_ip)):
                         src_ip_str += "."
 
-                        # convert ports to sting
+            # convert ports to sting
             src_port_str = str(sport)
-            dst_port_str = str(dport)
+            dst_port_str = str(other_ports[i])
 
             ##src_mac,#dst_mac,#src_ip,#dst_ip,#src_port,#dst_port
             line = src_mac_str + "," + dst_mac_str + "," + \
