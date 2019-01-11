@@ -49,7 +49,7 @@ packet_sizes = (64,) #,                     #PCAP file will be generated for the
                 # 1280,
                 # 1500)
 
-BASE_TTL=40
+BASE_TTL=0
 
 
 
@@ -1070,6 +1070,9 @@ default_sp = int(args.src_port[0])
 default_dp = int(args.dst_port[0])
 default_ttl = int(args.ttl[0])
 
+if default_ttl > 254:
+    print "TTL could not be set to greater than 255!"
+    exit(-1)
 
 
 for i in packet_sizes:
