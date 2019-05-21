@@ -293,7 +293,7 @@ def generateHolePunchSIPDP(pcapfile, sip, dp, ttl):
     print other_src_ips
 
     created_packets=0
-    num_packets = int(ttl) * n
+    num_packets = int(ttl) * (sip_len+1) * (dport_len+1)
     print "Number of packets to be generated: {}".format(num_packets)
     # #ttl trick
     for t in range(0, int(ttl)):
@@ -407,7 +407,7 @@ def generateHolePunchSPDP(pcapfile, sp, dp, ttl):
         return
 
     created_packets=0
-    num_packets = n*n*int(ttl)
+    num_packets = (dport_len+1)*(sport_len+1)*int(ttl)
     print "Number of packets to be generated: {}".format(num_packets)
     # #ttl trick
     for t in range(0, int(ttl)):
@@ -540,7 +540,7 @@ def generateHolePunchSIPSPDP(pcapfile, sip, sp, dp, ttl):
     print other_src_ips
 
     created_packets=0
-    num_packets = n*sport_len*dport_len*int(ttl)
+    num_packets = (sip_len+1)*(sport_len+1)*(dport_len+1)*int(ttl)
     print "Number of packets to be generated: {}".format(num_packets)
     # #ttl trick
     for t in range(0, int(ttl)):
@@ -674,7 +674,7 @@ def generateHolePunchSIPDIPDP(pcapfile, sip, dip, dp, ttl):
     print other_dst_ips
 
     created_packets=0
-    num_packets = n*(sip_len+1)*(dport_len+1)*int(ttl)
+    num_packets = (dip_len+1)*(sip_len+1)*(dport_len+1)*int(ttl)
     print "Number of packets to be generated: {}".format(num_packets)
     # #ttl trick
     for t in range(0, int(ttl)):
@@ -829,7 +829,7 @@ def generateHolePunchDIPSIPSPDP(pcapfile, sip, dip, sp, dp, ttl):
     print other_dst_ips
 
     created_packets=0
-    num_packets = n*(sip_len+1)*(dport_len+1)*(sport_len+1)*int(ttl)
+    num_packets = (dip_len+1)*(sip_len+1)*(dport_len+1)*(sport_len+1)*int(ttl)
     print "Number of packets to be generated: {}".format(num_packets)
     # #ttl trick
     for t in range(0, int(ttl)):
