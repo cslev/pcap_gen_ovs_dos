@@ -993,7 +993,7 @@ parser = argparse.ArgumentParser(description="Usage of PCAP generator for hole p
                                  formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument('-t','--type',nargs=1,
                     help=textwrap.dedent('''\
-                         Specify the type: DP, SP_DP, DIP_SP_DP, SIP_DIP_SP_DP.
+                         Specify the type: DP, SP_DP, SIP_DP, SIP_DIP_DP, SIP_SP_DP,SIP_DIP_SP_DP
                          \033[1mDP\033[0m will punch a hole only on the dst_port (udp) -> 17 packets!
                          \033[1mSP_DP\033[0m will punch holes on dst_port (UDP) and src_port (UDP) -> 17x17 packets
                          \033[1mSIP_DP\033[0m will punch holes on dst_port (UDP) and src_ip -> 17x33 packets
@@ -1057,7 +1057,8 @@ type = args.type[0]
 types = ['DP', 'SP_DP', 'SIP_DP', 'SIP_DIP_DP', 'SIP_SP_DP','SIP_DIP_SP_DP']
 
 if type not in types:
-    print "Type has not set properly. Accepted fields: DP, SP_DP, SIP_DP, SIP_DIP_DP, SIP_SP_DP, SIP_DIP_SP_DP"
+    print "Type has not set properly. Accepted fields:"
+    print types
     exit(-1)
 
 
